@@ -1,0 +1,53 @@
+{
+  "manifest_version": 1,
+  "id": "f5-tts",
+  "version": "1.0.0",
+  "display_name": "F5-TTS (offline + voice clone)",
+  "summary": "Voice-clone-only neural TTS based on F5-TTS_v1_Base. ~1.5 GB model, English + Chinese, requires a 6-15s reference clip.",
+  "author": "Subtitld add-on team",
+  "license": "MIT (wrapper) + CC-BY-NC-4.0 (F5-TTS weights) — non-commercial only",
+  "executable": "bin/f5-tts-addon",
+  "protocol": 1,
+  "startup_timeout_sec": 180,
+  "platforms": ["linux", "macos", "windows"],
+  "tasks": ["tts.synthesize"],
+  "voice_clone": true,
+  "languages": ["en", "zh-cn"],
+  "voices": [
+    {"id": "f5-clone", "language": "*", "display_name": "Custom voice (clone from 6-15 second reference)", "requires": ["voice_ref_audio"], "clone": true}
+  ],
+  "models": [
+    {"id": "f5-tts-v1-base", "repo": "SWivid/F5-TTS", "size_mb": 1500, "bundled": false},
+    {"id": "vocos-mel-24khz", "repo": "charactr/vocos-mel-24khz", "size_mb": 80, "bundled": false}
+  ],
+  "disk_required_mb": 4096,
+  "ram_required_mb": 4096,
+  "gpu": "optional",
+  "config_schema": {
+    "fields": [
+      {
+        "key": "device",
+        "type": "select",
+        "label": "Inference device",
+        "default": "cpu",
+        "options": [
+          {"value": "cpu",  "label": "CPU (5-15 s/line)"},
+          {"value": "cuda", "label": "CUDA (NVIDIA GPU, fast)"},
+          {"value": "mps",  "label": "MPS (Apple Silicon, beta)"}
+        ]
+      },
+      {
+        "key": "voice_ref_audio",
+        "type": "file",
+        "label": "Default voice reference (6-15 s, mono WAV recommended)",
+        "help": "Required by F5-TTS. Per-speaker overrides set in the speaker panel take precedence."
+      },
+      {
+        "key": "voice_ref_text",
+        "type": "string",
+        "label": "Reference clip transcript",
+        "help": "Optional. If empty, F5-TTS auto-transcribes via Whisper (slower first call)."
+      }
+    ]
+  }
+}
