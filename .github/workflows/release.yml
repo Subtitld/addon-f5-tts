@@ -79,19 +79,41 @@ jobs:
           BIN_NAME="f5-tts-addon"
           if [ "$RUNNER_OS" = "Windows" ]; then BIN_NAME="${BIN_NAME}.exe"; fi
           BIN="$BIN_DIR/$BIN_NAME"
-          # Wrapper writes `hello` immediately; one line + EOF on stdin
-          # makes it exit cleanly. 30 s allows for the heavy import
-          # graph (torch is slow to load, especially on Windows).
-          HELLO=$(timeout 30 "$BIN" < /dev/null | head -n 1)
-          echo "frame: $HELLO"
-          python - "$HELLO" <<'PY'
-          import json, sys
-          frame = json.loads(sys.argv[1])
+          # Drive the binary from Python rather than the shell pipeline:
+          # macOS runners don't have GNU `timeout` on PATH, and Python's
+          # threading.Timer watchdog is portable across all three OS
+          # runners. 30 s allows for the heavy import graph (torch +
+          # torchaudio + vocos), which is slow to load especially on
+          # the Windows runner.
+          python - "$BIN" <<'PY'
+          import json, subprocess, sys, threading
+          proc = subprocess.Popen([sys.argv[1]], stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  text=True)
+          def watchdog():
+              try: proc.kill()
+              except Exception: pass
+          timer = threading.Timer(30.0, watchdog); timer.start()
+          try:
+              proc.stdin.close()
+              line = proc.stdout.readline()
+          finally:
+              timer.cancel()
+              try: proc.terminate()
+              except Exception: pass
+              try: proc.wait(timeout=10)
+              except Exception:
+                  try: proc.kill()
+                  except Exception: pass
+          print('frame:', (line or '').strip())
+          if not line:
+              sys.exit('no hello frame received within 30 s')
+          frame = json.loads(line)
           assert frame.get('type') == 'hello', frame
           assert frame.get('addon') == 'f5-tts', frame
           caps = frame.get('capabilities') or []
           assert any(c.get('task') == 'tts.synthesize' for c in caps), caps
-          # Sanity-check that the f5-clone voice is exposed
+          # Sanity-check that the f5-clone voice is exposed.
           tts = next(c for c in caps if c.get('task') == 'tts.synthesize')
           voices = tts.get('voices') or []
           assert any(v.get('id') == 'f5-clone' for v in voices), voices
