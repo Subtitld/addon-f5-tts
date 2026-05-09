@@ -61,7 +61,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+          # torch + torchaudio together from the CPU index — torchaudio's
+          # ABI is bound to the exact torch version, and f5-tts imports it
+          # at module scope. Installing both from the same index keeps the
+          # wheels in lockstep.
+          pip install torch torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
           # f5-tts pulls torchaudio + vocos + transformers + a long
           # tail of audio libs (librosa, pypinyin, jieba, descript codec).
           # Letting pip resolve from package metadata keeps us aligned

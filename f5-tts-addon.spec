@@ -23,6 +23,10 @@ hiddenimports = (
     + _safe_collect(collect_submodules, 'soundfile')
     + _safe_collect(collect_submodules, 'pypinyin')
     + _safe_collect(collect_submodules, 'jieba')
+    # f5-tts imports torchaudio at module scope; collect explicitly so we
+    # don't depend on PyInstaller's static analysis catching it (coqui's
+    # v1.0.3 frozen bundle shipped without torchaudio for that reason).
+    + _safe_collect(collect_submodules, 'torchaudio')
 )
 datas = (
     _safe_collect(collect_data_files, 'f5_tts')
@@ -30,6 +34,7 @@ datas = (
     + _safe_collect(collect_data_files, 'transformers')
     + _safe_collect(collect_data_files, 'librosa')
     + _safe_collect(collect_data_files, 'pypinyin')
+    + _safe_collect(collect_data_files, 'torchaudio')
     + [('manifest.json', '.')]
 )
 

@@ -1,7 +1,7 @@
 {
   "manifest_version": 1,
   "id": "f5-tts",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "display_name": "F5-TTS (offline + voice clone)",
   "summary": "Voice-clone-only neural TTS based on F5-TTS_v1_Base. ~1.5 GB model, English + Chinese, requires a 6-15s reference clip.",
   "author": "Subtitld add-on team",
