@@ -71,6 +71,27 @@ jobs:
           # Letting pip resolve from package metadata keeps us aligned
           # with what F5-TTS upstream tested against.
           pip install f5-tts
+          # Pin transformers below 4.55. The 4.55+ refactor introduced
+          # two regressions hostile to PyInstaller bundles:
+          #
+          #   - `transformers/audio_utils.py` calls
+          #     `version.parse(importlib.metadata.version("torchcodec"))`
+          #     unconditionally at module-load time. f5-tts imports
+          #     `transformers.pipelines` transitively, which imports
+          #     image_processing_utils → processing_utils → audio_utils,
+          #     so the chain explodes when torchcodec isn't installed
+          #     (and it isn't a f5-tts dep). v1.0.3 hit this exact path.
+          #   - `_check_and_adjust_experts_implementation` introspects
+          #     class source files via `open()`, which fails in frozen
+          #     bundles because PyInstaller ships bytecode, not .py
+          #     source.
+          #
+          # F5-TTS uses a custom DiT model (not transformers MoE) and
+          # only needs transformers for tokenizers + utils — the 4.40-4.54
+          # window covers everything it actually exercises. >=5 also
+          # dropped isin_mps_friendly, so capping at <4.55 sidesteps that
+          # too.
+          pip install --upgrade "transformers>=4.40,<4.55"
 
       - name: Build add-on bundle
         run: pyinstaller f5-tts-addon.spec --distpath dist/
