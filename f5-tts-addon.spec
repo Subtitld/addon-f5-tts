@@ -27,6 +27,12 @@ hiddenimports = (
     # don't depend on PyInstaller's static analysis catching it (coqui's
     # v1.0.3 frozen bundle shipped without torchaudio for that reason).
     + _safe_collect(collect_submodules, 'torchaudio')
+    # f5_tts/infer/utils_infer.py imports matplotlib at module scope
+    # (it ships training-utility plotting code that runs unconditionally).
+    # Without matplotlib the import chain fails before we reach inference.
+    # We previously listed matplotlib in `excludes` to slim the bundle —
+    # that was a mistake; it has to be bundled.
+    + _safe_collect(collect_submodules, 'matplotlib')
 )
 datas = (
     _safe_collect(collect_data_files, 'f5_tts')
@@ -35,6 +41,7 @@ datas = (
     + _safe_collect(collect_data_files, 'librosa')
     + _safe_collect(collect_data_files, 'pypinyin')
     + _safe_collect(collect_data_files, 'torchaudio')
+    + _safe_collect(collect_data_files, 'matplotlib')
     + [('manifest.json', '.')]
 )
 
@@ -49,7 +56,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tensorflow', 'jax', 'flax', 'gradio', 'wandb', 'matplotlib'],
+    excludes=['tensorflow', 'jax', 'flax', 'gradio', 'wandb'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
