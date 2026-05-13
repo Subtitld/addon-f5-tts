@@ -27,7 +27,7 @@ pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
 pip install f5-tts
 pyinstaller f5-tts-addon.spec --distpath dist/
 cd dist/f5-tts-addon
-zip -r ../f5-tts-1.0.0-linux-x86_64.zip . ../../manifest.json ../../LICENSE ../../README.md
+zip -r ../f5-tts-1.0.5-linux-x86_64.zip . ../../manifest.json ../../LICENSE ../../README.md
 ```
 
 `ffmpeg` is required at runtime for arbitrary reference audio decoding.

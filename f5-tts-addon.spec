@@ -4,12 +4,35 @@
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 
-def _safe_collect(fn, name):
+def _safe_collect(fn, name, **kwargs):
     try:
-        return fn(name)
+        return fn(name, **kwargs)
     except Exception:
         return []
 
+
+# Packages whose `.py` source files MUST ship alongside the `.pyc` —
+# they decorate module-scope functions with `@torch.jit.script`, which
+# at import time calls `inspect.getsourcelines()` on the decorated
+# function. PyInstaller's default freeze stores bytecode only, so the
+# source-line lookup fails with
+# `OSError: Can't get source for <function ...>. TorchScript requires
+# source access in order to carry out compilation`.
+#
+# Confirmed offenders (traced from a 1.0.4 frozen bundle):
+#   - x_transformers/attend.py:48  ->  @torch.jit.script softclamp(...)
+# Defensive inclusions (small packages from the same dep family that
+# use TorchScript heavily — cheap insurance against the next surprise):
+#   - ema_pytorch, torchdiffeq, vocos
+# `collect_data_files(..., include_py_files=True)` is the lever that
+# tells PyInstaller to also ship `.py` files; without that flag only
+# non-Python data (configs, fonts, weights) come along.
+_TORCHSCRIPT_SOURCE_PACKAGES = (
+    'x_transformers',
+    'ema_pytorch',
+    'torchdiffeq',
+    'vocos',
+)
 
 # f5-tts pulls a *huge* dep tree: torch, torchaudio, vocos, librosa,
 # transformers, x_transformers, ema_pytorch, torchdiffeq, descript-codec,
@@ -34,6 +57,9 @@ hiddenimports = (
     # that was a mistake; it has to be bundled.
     + _safe_collect(collect_submodules, 'matplotlib')
 )
+for _pkg in _TORCHSCRIPT_SOURCE_PACKAGES:
+    hiddenimports += _safe_collect(collect_submodules, _pkg)
+
 datas = (
     _safe_collect(collect_data_files, 'f5_tts')
     + _safe_collect(collect_data_files, 'vocos')
@@ -44,6 +70,12 @@ datas = (
     + _safe_collect(collect_data_files, 'matplotlib')
     + [('manifest.json', '.')]
 )
+# Ship .py sources for TorchScript-bearing packages so
+# `inspect.getsourcelines()` can find them at runtime. Each of these
+# is small (tens of files, single-digit MB), so the freeze grows
+# negligibly compared to torch itself.
+for _pkg in _TORCHSCRIPT_SOURCE_PACKAGES:
+    datas += _safe_collect(collect_data_files, _pkg, include_py_files=True)
 
 block_cipher = None
 
