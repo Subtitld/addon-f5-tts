@@ -37,7 +37,7 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO,
 
 PROTOCOL = 1
 ADDON_ID = 'f5-tts'
-VERSION = '1.0.5'
+VERSION = '1.0.6'
 
 
 # ---------------------------------------------------------------------------
