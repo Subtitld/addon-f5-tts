@@ -37,20 +37,61 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO,
 
 PROTOCOL = 1
 ADDON_ID = 'f5-tts'
-VERSION = '1.0.6'
+VERSION = '26.11.1'
 
 
 # ---------------------------------------------------------------------------
 # Wire helpers
 # ---------------------------------------------------------------------------
 _write_lock = threading.Lock()
+# stdout is the protocol channel. F5-TTS prints its progress there, which the
+# host can't parse, so frames go to a handle of their own and print() goes
+# to stderr.
+_protocol_out = sys.stdout
+sys.stdout = sys.stderr
 
 
 def write_frame(frame: dict) -> None:
     line = json.dumps(frame, ensure_ascii=False)
     with _write_lock:
-        sys.stdout.write(line + '\n')
-        sys.stdout.flush()
+        _protocol_out.write(line + '\n')
+        _protocol_out.flush()
+
+
+def _import_f5_tts():
+    """Import f5_tts.api. The f5_tts.model package imports its training
+    code (Trainer), which pulls in wandb, accelerate's trackers and datasets;
+    inference never uses it, and the bundle leaves wandb out. An empty
+    stand-in for the trainer module keeps that chain from loading."""
+    import types
+    if 'f5_tts.model.trainer' not in sys.modules:
+        trainer = types.ModuleType('f5_tts.model.trainer')
+        trainer.Trainer = None
+        sys.modules['f5_tts.model.trainer'] = trainer
+    from f5_tts.api import F5TTS  # type: ignore
+    _audio_without_torchcodec()
+    return F5TTS
+
+
+def _audio_without_torchcodec():
+    """F5-TTS reads the reference clip with torchaudio.load, which since
+    torchaudio 2.9 needs TorchCodec and FFmpeg's shared libraries. Read it
+    with soundfile instead (it is always a WAV by then: F5-TTS converts the
+    clip with pydub first), and give pydub the ffmpeg Subtitld ships."""
+    import numpy as np
+    import soundfile as sf
+    import torch
+    import torchaudio
+    from pydub import AudioSegment
+
+    def load(path, *args, **kwargs):
+        data, sample_rate = sf.read(str(path), dtype='float32', always_2d=True)
+        return torch.from_numpy(np.ascontiguousarray(data.T)), sample_rate
+
+    torchaudio.load = load
+    ffmpeg = os.environ.get('SUBTITLD_FFMPEG_EXECUTABLE')
+    if ffmpeg:
+        AudioSegment.converter = ffmpeg
 
 
 def emit_progress(rid, value, message=''):
@@ -83,7 +124,7 @@ def _load_model(device: str):
             return _model
 
         try:
-            from f5_tts.api import F5TTS  # type: ignore
+            F5TTS = _import_f5_tts()
         except ImportError as exc:
             raise RuntimeError(f'f5-tts python package not available: {exc}') from exc
 
@@ -168,7 +209,7 @@ def handle_tts_synthesize(rid: str, params: dict, defaults: dict) -> None:
             ref_file=speaker_wav,
             ref_text=speaker_text,
             gen_text=text,
-            seed=None,
+            seed=params.get('seed'),
         )
     except Exception as exc:
         log.exception('synth failed')
@@ -195,6 +236,11 @@ def handle_tts_synthesize(rid: str, params: dict, defaults: dict) -> None:
 # Main loop
 # ---------------------------------------------------------------------------
 def main() -> int:
+    if getattr(sys, 'frozen', False) and sys.argv[1:2] == ['-m']:
+        # Something ran the frozen add-on as if it were Python
+        # (`sys.executable -m pip ...`). It isn't; don't answer as an add-on.
+        sys.stderr.write('f5-tts-addon is not a Python interpreter\n')
+        return 2
     manifest_path = Path(__file__).resolve().parent / 'manifest.json'
     voices: list[dict] = []
     languages: list[str] = []
@@ -226,6 +272,14 @@ def main() -> int:
              'voice_clone': True},
         ],
     })
+
+    # Load torch and f5_tts here, in the main thread, before any request:
+    # imported from a request thread, frozen torch can hang loading its
+    # native extension (seen with the Kokoro add-on on Windows).
+    try:
+        _import_f5_tts()
+    except Exception:
+        log.exception('f5_tts import failed')   # reported per request by _load_model
 
     for raw_line in sys.stdin:
         raw_line = raw_line.strip()
@@ -269,4 +323,8 @@ def main() -> int:
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    code = main()
+    # Leave without interpreter shutdown: torch's thread pools can keep a
+    # frozen add-on alive after `shutdown`. Every frame is flushed by now.
+    sys.stderr.flush()
+    os._exit(code)

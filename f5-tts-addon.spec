@@ -27,8 +27,12 @@ def _safe_collect(fn, name, **kwargs):
 # `collect_data_files(..., include_py_files=True)` is the lever that
 # tells PyInstaller to also ship `.py` files; without that flag only
 # non-Python data (configs, fonts, weights) come along.
+#   - assoc_scan/assoc_scan.py  ->  @torch.jit.script binary_operator(...),
+#     imported by x_transformers 2.x (26.11.1)
 _TORCHSCRIPT_SOURCE_PACKAGES = (
     'x_transformers',
+    'assoc_scan',
+    'einops',
     'ema_pytorch',
     'torchdiffeq',
     'vocos',
@@ -88,6 +92,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
+    # wandb and gradio serve training and the demo UI only; f5_tts_addon
+    # stands in an empty module for the training code, which imports wandb.
     excludes=['tensorflow', 'jax', 'flax', 'gradio', 'wandb'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
